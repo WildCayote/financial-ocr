@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+celery
+redis
+python-multipart
+pymupdf       # PDF text extraction
+pdf2image       # PDF to images
+pytesseract     # OCR
+pillow        # Image processing
+openai       # Markdown formatting
