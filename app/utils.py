@@ -113,6 +113,24 @@ def ocr_images_to_text(images: List) -> str:
         raise PDFProcessingError("Failed to extract text via OCR") from e
 
 
+def ocr_one_image_to_text(image) -> str:
+    """
+    Use OCR to extract text from a list of images.
+
+    Args:
+        images (List): List of image objects.
+
+    Returns:
+        str: The OCR-extracted text.
+    """
+    try:
+        ocr_texts = pytesseract.image_to_string(image)
+        return "\n\n".join(ocr_texts)
+    except Exception as e:
+        logging.error("Error during OCR processing", exc_info=True)
+        raise PDFProcessingError("Failed to extract text via OCR") from e
+
+
 def format_with_openai(text: str) -> str:
     """
     Format text using OpenAI's chat model into structured markdown.
