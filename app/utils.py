@@ -6,27 +6,34 @@ import fitz  # PyMuPDF
 from pdf2image import convert_from_path
 import pytesseract
 from openai import OpenAI
+import google.generativeai as genai
+import json, re
+
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()]  # In production, consider secure file logging with rotation
+    # In production, consider secure file logging with rotation
+    handlers=[logging.StreamHandler()]
 )
 
 # Custom exception for PDF processing errors
+
+
 class PDFProcessingError(Exception):
     pass
+
 
 def analyze_pdf_type(pdf_path: str, text_threshold: float = 0.7, min_text_length: int = 100) -> str:
     """
     Analyze a PDF and determine if it is predominantly text or image-based.
-    
+
     Args:
         pdf_path (str): The file path to the PDF document.
         text_threshold (float): The fraction of pages that must be text to classify as a text PDF.
         min_text_length (int): Minimum character count to consider a page as text.
-        
+
     Returns:
         str: "text" if predominantly text, "image" otherwise.
     """
@@ -47,13 +54,14 @@ def analyze_pdf_type(pdf_path: str, text_threshold: float = 0.7, min_text_length
         logging.error("Error analyzing PDF type", exc_info=True)
         raise PDFProcessingError("Failed to analyze PDF type") from e
 
+
 def extract_text_from_pdf(pdf_path: str) -> str:
     """
     Extract text content from all pages of a PDF.
-    
+
     Args:
         pdf_path (str): The file path to the PDF document.
-        
+
     Returns:
         str: The concatenated text from the PDF pages.
     """
@@ -67,14 +75,15 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         logging.error("Error extracting text from PDF", exc_info=True)
         raise PDFProcessingError("Failed to extract text from PDF") from e
 
+
 def extract_images_from_pdf(pdf_path: str, dpi: int = 300) -> List:
     """
     Convert each page of the PDF into an image.
-    
+
     Args:
         pdf_path (str): The file path to the PDF document.
         dpi (int): Resolution for image conversion.
-        
+
     Returns:
         List: List of images corresponding to PDF pages.
     """
@@ -85,13 +94,14 @@ def extract_images_from_pdf(pdf_path: str, dpi: int = 300) -> List:
         logging.error("Error extracting images from PDF", exc_info=True)
         raise PDFProcessingError("Failed to extract images from PDF") from e
 
+
 def ocr_images_to_text(images: List) -> str:
     """
     Use OCR to extract text from a list of images.
-    
+
     Args:
         images (List): List of image objects.
-        
+
     Returns:
         str: The OCR-extracted text.
     """
@@ -102,13 +112,14 @@ def ocr_images_to_text(images: List) -> str:
         logging.error("Error during OCR processing", exc_info=True)
         raise PDFProcessingError("Failed to extract text via OCR") from e
 
+
 def format_with_openai(text: str) -> str:
     """
     Format text using OpenAI's chat model into structured markdown.
-    
+
     Args:
         text (str): Input text to be formatted.
-        
+
     Returns:
         str: The formatted markdown text.
     """
@@ -116,9 +127,9 @@ def format_with_openai(text: str) -> str:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("Missing OPENAI_API_KEY environment variable")
-        
+
         client = OpenAI(api_key=api_key)
-        
+
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -149,15 +160,115 @@ def format_with_openai(text: str) -> str:
         logging.error("Error formatting text with OpenAI", exc_info=True)
         raise PDFProcessingError("Failed to format text with OpenAI") from e
 
+
+def format_with_gemini(text: str) -> str:
+    """
+    Format text using OpenAI's chat model into structured markdown.
+
+    Args:
+        text (str): Input text to be formatted.
+
+    Returns:
+        str: The formatted markdown text.
+    """
+    try:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("Missing OPENAI_API_KEY environment variable")
+
+        genai.configure(api_key=api_key)
+
+        # client = genai.Client(api_key=gemini_api_key)
+
+        prompt = [
+            "You are an expert document formatter specializing in financial documents. "
+            "Your task is to convert the provided text into a highly structured JSON Format. "
+            "Please ensure the following: \n"
+            "- Preserve all original tables, headings, subheadings, bullet points, and lists accurately. \n"
+            "- Maintain all numerical data, currency symbols, percentages, dates, and financial details without alteration. \n"
+            "- Correct minor OCR errors or misalignments without changing the intended financial information; annotate ambiguous sections with '[Review]' for manual verification. \n"
+            "- Ensure a clear hierarchical structure (sections, subsections, etc.) is maintained. \n"
+            "- Do not remove or mask sensitive data; focus solely on formatting improvements to enhance clarity and readability. \n"
+            "- Handle all possible formatting inconsistencies robustly to produce a clean, professional json format."
+            "- For the keys of the json unless a specific schema is provided try to pick a standard way of representing the variables in their specific domain, so use 'Total Assets' instead of 'total_assets'"
+            "NOTICE: BE CAREFUL ABOUT THE STRUCTURE OF THE DOCUMENT. DO NOT ALTER THE MEANING OF THE TEXT.",
+            "Respond ONLY with a valid JSON that can be parsed using Python's json.loads()",
+            text
+        ]
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        response = model.generate_content(
+            '\n'.join(prompt)
+        )
+        
+        response_text = response.text
+
+        response_json = repair_json_response(response_text)
+
+        return response_json
+    except Exception as e:
+        logging.error("Error formatting text with Gemini", exc_info=True)
+        raise PDFProcessingError("Failed to format text with Gemini") from e
+
 # Example main processing function
+
+def repair_json_response(response_text):
+    """
+    Ultra-robust JSON repair function with specific handling for string interpolation
+    """
+    # Remove Markdown code block markers if present
+    response_text = re.sub(r'^```json\s*|\s*```$', '',
+                           response_text, flags=re.MULTILINE).strip()
+
+    # Try to find the JSON part (between first { and last })
+    json_start = response_text.find('{')
+    json_end = response_text.rfind('}')
+
+    if json_start == -1 or json_end == -1:
+        return None
+
+    json_str = response_text[json_start:json_end+1]
+
+    # First try to parse as-is
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        pass
+
+    # If that fails, try more aggressive repair
+    try:
+        # Extract generated_code content with more flexible matching
+        code_match = re.search(
+            r'"generated_code"\s*:\s*"(.*?)"(?=\s*[},])', json_str, re.DOTALL)
+        if not code_match:
+            return None
+
+        # Get the code content
+        code_content = code_match.group(1)
+
+        # First escape all backslashes
+        code_content = code_content.replace('\\', '\\\\')
+
+        # Then escape all quotes that aren't part of string interpolation
+        # This is the key change - we only escape quotes not preceded by $
+        code_content = re.sub(r'(?<!\$)(?<!\\)"', r'\"', code_content)
+
+        # Reconstruct the JSON with properly escaped content
+        fixed_json = json_str[:code_match.start(
+            1)] + code_content + json_str[code_match.end(1):]
+
+        # Try parsing again
+        return json.loads(fixed_json)
+    except:
+        return None
+
 def process_pdf(pdf_path: str) -> Union[str, None]:
     """
     Process the PDF file by determining its type, extracting text (or OCR from images),
     and formatting it with OpenAI.
-    
+
     Args:
         pdf_path (str): The file path to the PDF document.
-    
+
     Returns:
         str: The final formatted text.
     """
@@ -170,12 +281,12 @@ def process_pdf(pdf_path: str) -> Union[str, None]:
         else:
             images = extract_images_from_pdf(pdf_path)
             extracted_text = ocr_images_to_text(images)
-        
+
         if not extracted_text.strip():
             logging.warning("No text extracted from PDF.")
             return None
-        
-        formatted_text = format_with_openai(extracted_text)
+
+        formatted_text = format_with_gemini(extracted_text)
         return formatted_text
     except PDFProcessingError as e:
         logging.error("PDF processing failed", exc_info=True)

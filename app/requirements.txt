@@ -8,3 +8,4 @@ pdf2image       # PDF to images
 pytesseract     # OCR
 pillow        # Image processing
 openai       # Markdown formatting
+google-generativeai

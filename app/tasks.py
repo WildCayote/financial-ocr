@@ -4,7 +4,7 @@ from utils import (
     extract_text_from_pdf,
     extract_images_from_pdf,
     ocr_images_to_text,
-    format_with_openai
+    format_with_gemini
 )
 import os
 
@@ -26,7 +26,7 @@ def process_pdf_task(self, pdf_path):
             raw_text = ocr_images_to_text(images)
         
         # Format with OpenAI
-        formatted_md = format_with_openai(raw_text)
+        formatted_md = format_with_gemini(raw_text)
         
         return {
             "document_type": pdf_type,
