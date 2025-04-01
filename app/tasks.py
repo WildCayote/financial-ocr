@@ -25,7 +25,7 @@ def process_pdf_task(self, pdf_path):
             raw_text = extract_text_from_pdf(pdf_path)
         else:
             images = extract_images_from_pdf(pdf_path)
-            raw_text = ocr_images_to_text([images])
+            raw_text = ocr_images_to_text(images)
         
         # Format with OpenAI
         formatted_md = format_with_gemini(raw_text)

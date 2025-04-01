@@ -27,10 +27,10 @@ async def process_pdf(file: UploadFile = File(...)):
     return JSONResponse({"task_id": task.id})
 
 
-IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"}
 
 @app.post("/process-img")
 async def process_image(file: UploadFile = File(...)):
+    IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"}
     # Validate MIME type
     if file.content_type not in IMAGE_MIME_TYPES:
         raise HTTPException(status_code=400, detail="Invalid file type. Only image files are allowed.")
@@ -57,7 +57,7 @@ async def process_image(file: UploadFile = File(...)):
 
     # Start processing (assuming process_image_task is defined)
     task = process_image_task.delay(temp_path)
-    return JSONResponse({"task_id": task.id, "saved_path": temp_path})
+    return {"task_id": task.id}
 
 @app.get("/tasks/{task_id}")
 def get_task_status(task_id: str):
