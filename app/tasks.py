@@ -43,31 +43,3 @@ def process_pdf_task(self, pdf_path):
         self.retry(exc=e)
     finally:
         print("COMPLETED ")
-
-
-@celery.task(bind=True, max_retries=3)
-def process_image_task(self, image_path):
-    try:
-        # Validate image format
-        with Image.open(image_path) as img:
-            img.verify()
-
-        # Extract text using OCR
-        raw_text = ocr_one_image_to_text(image_path)
-
-        # Extract text using mistral
-        mistral_text = extract_with_mistral(image_path, image = True)
-
-
-        # Format extracted text
-        formatted_md = format_with_gemini(raw_text, mistral_text)
-
-        return {
-            "document_type": "image",
-            "parsed_document": formatted_md
-        }
-
-    except Exception as e:
-        self.retry(exc=e)
-    finally:
-        print("COMPLETED")

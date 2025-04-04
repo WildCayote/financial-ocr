@@ -1,4 +1,4 @@
-import os, io, logging, json, re, uuid
+import os, io, logging, json, re
 from typing import List, Union
 
 import fitz  # PyMuPDF
@@ -324,7 +324,7 @@ def process_pdf(pdf_path: str) -> Union[str, None]:
         logging.error("PDF processing failed", exc_info=True)
         return None
 
-def image_to_pdf(image_path: str):
+def image_to_pdf(image_path: str, save_path: str):
     doc = PdfDocument()
     
     # remote the page marigns
@@ -343,38 +343,20 @@ def image_to_pdf(image_path: str):
     # Draw the image on the newly added page
     page.Canvas.DrawImage(image, 0.0, 0.0, width, height)
 
-    # Save the resulting PDF
-    name = uuid.uuid4()
-    path = f"{name}.pdf"
-    doc.SaveToFile(path)
+    doc.SaveToFile(save_path)
     doc.Close()
 
-    return path
-
-def extract_with_mistral(pdf_path: str, image=False):
+def extract_with_mistral(pdf_path: str):
     # upload the image to mistral
-    if not image:
-        uploaded_pdf = client.files.upload(
-            file={
-                "file_name": "test.pdf",
-                "content": open(pdf_path, "rb"),
-            },
-            purpose="ocr"
-        )
-    
-    else:
-        # covert to pdf
-        resulting_pdf = image_to_pdf(pdf_path)
-        
-        uploaded_pdf = client.files.upload(
-            file={
+    uploaded_pdf = client.files.upload(
+        file={
             "file_name": "test.pdf",
-            "content": open(resulting_pdf, 'rb'),
-            },
-            purpose="ocr",
-        ) 
+            "content": open(pdf_path, "rb"),
+        },
+        purpose="ocr"
+    )
     
-    logging.info(f'Coverted image to pdf path: {resulting_pdf}')
+    # logging.info(f'Coverted image to pdf path: {resulting_pdf}')
         
     signed_url = client.files.get_signed_url(file_id=uploaded_pdf.id)
 

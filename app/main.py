@@ -1,6 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
-from tasks import process_pdf_task, process_image_task
+from tasks import process_pdf_task
+from utils import image_to_pdf
 import uuid
 import os
 from PIL import Image
@@ -54,10 +55,15 @@ async def process_image(file: UploadFile = File(...)):
     # Save image
     with open(temp_path, "wb") as f:
         f.write(content)
+    
+    # convert to pdf
+    pdf_temp_path = f"uploads/{file_id}.pdf"
+    image_to_pdf(image_path=temp_path, save_path=pdf_temp_path)
+    print(f"Image to pdf path: {pdf_temp_path}")
 
     # Start processing (assuming process_image_task is defined)
-    task = process_image_task.delay(temp_path)
-    return {"task_id": task.id}
+    task = process_pdf_task.delay(pdf_temp_path)
+    return JSONResponse({"task_id": task.id})
 
 @app.get("/tasks/{task_id}")
 def get_task_status(task_id: str):
