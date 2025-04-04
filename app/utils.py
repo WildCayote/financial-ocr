@@ -1,13 +1,22 @@
-import os
-import logging
+import os, io, logging, json, re, uuid
 from typing import List, Union
 
 import fitz  # PyMuPDF
 from pdf2image import convert_from_path
-import pytesseract
+from PIL import Image
 from openai import OpenAI
+from mistralai import Mistral
+
+import pytesseract
 import google.generativeai as genai
-import json, re
+
+from spire.pdf.common import *
+from spire.pdf import *
+
+api_key = "mkH3CjEEYwTKErWuIMg1UYqlYnh88OJW"
+
+client = Mistral(api_key=api_key)
+
 
 
 # Configure logging
@@ -125,6 +134,7 @@ def ocr_one_image_to_text(image) -> str:
     """
     try:
         ocr_texts = pytesseract.image_to_string(image)
+        logging.info(ocr_texts)
         return "\n\n".join(ocr_texts)
     except Exception as e:
         logging.error("Error during OCR processing", exc_info=True)
@@ -154,7 +164,7 @@ def format_with_openai(text: str) -> str:
                 {
                     "role": "system",
                     "content": (
-                        "You are an expert document formatter specializing in financial documents. "
+                        "You are an expert document formatter specializing in financial documents. The keys should be: Date of birth, First Name, Middle Name, Surname, Date of Expiry, Sex, Country of Citizenship, FCN/National ID. NOTE: FOR THE Date of birth and Date of Expiry IGNORE DATES WITH AMHARIC OR UNKNOWN KEYWORDS and DONT add additional fields other than the ones specified"
                         "Your task is to convert the provided text into a highly structured Markdown document. "
                         "Please ensure the following: \n"
                         "- Preserve all original tables, headings, subheadings, bullet points, and lists accurately. \n"
@@ -179,12 +189,13 @@ def format_with_openai(text: str) -> str:
         raise PDFProcessingError("Failed to format text with OpenAI") from e
 
 
-def format_with_gemini(text: str) -> str:
+def format_with_gemini(text: str, mistral_text: str) -> str:
     """
     Format text using OpenAI's chat model into structured markdown.
 
     Args:
         text (str): Input text to be formatted.
+        mistral_text (str): text found from mistral ai
 
     Returns:
         str: The formatted markdown text.
@@ -200,7 +211,9 @@ def format_with_gemini(text: str) -> str:
 
         prompt = [
             "You are an expert document formatter specializing in financial documents. "
-            "Your task is to convert the provided text into a highly structured JSON Format. "
+            "You also will recieve identification documents and extract the key value pairs to a json document accordingly",
+            "Your task is to convert the provided text into a highly structured JSON Format. ",
+            "You will be provided with two ocr results, one from tesseract ocr and another from mistral ocr. Always take the best response from the two and try your best to understand the document using both of the ocr results."
             "Please ensure the following: \n"
             "- Preserve all original tables, headings, subheadings, bullet points, and lists accurately. \n"
             "- Maintain all numerical data, currency symbols, percentages, dates, and financial details without alteration. \n"
@@ -211,7 +224,8 @@ def format_with_gemini(text: str) -> str:
             "- For the keys of the json unless a specific schema is provided try to pick a standard way of representing the variables in their specific domain, so use 'Total Assets' instead of 'total_assets'"
             "NOTICE: BE CAREFUL ABOUT THE STRUCTURE OF THE DOCUMENT. DO NOT ALTER THE MEANING OF THE TEXT.",
             "Respond ONLY with a valid JSON that can be parsed using Python's json.loads()",
-            text
+            f"tesseract ocr: {text}",
+            f"mistral ocr: {mistral_text} "
         ]
         model = genai.GenerativeModel('gemini-2.0-flash')
         response = model.generate_content(
@@ -309,3 +323,76 @@ def process_pdf(pdf_path: str) -> Union[str, None]:
     except PDFProcessingError as e:
         logging.error("PDF processing failed", exc_info=True)
         return None
+
+def image_to_pdf(image_path: str):
+    doc = PdfDocument()
+    
+    # remote the page marigns
+    doc.PageSettings.SetMargins(0.0)
+
+    # load the image
+    image = PdfImage.FromFile(image_path)
+
+    # Get the image width and height
+    width = image.PhysicalDimension.Width
+    height = image.PhysicalDimension.Height
+
+    # Add a page with the same width and height to the PDF
+    page = doc.Pages.Add(SizeF(width, height))   
+
+    # Draw the image on the newly added page
+    page.Canvas.DrawImage(image, 0.0, 0.0, width, height)
+
+    # Save the resulting PDF
+    name = uuid.uuid4()
+    path = f"{name}.pdf"
+    doc.SaveToFile(path)
+    doc.Close()
+
+    return path
+
+def extract_with_mistral(pdf_path: str, image=False):
+    # upload the image to mistral
+    if not image:
+        uploaded_pdf = client.files.upload(
+            file={
+                "file_name": "test.pdf",
+                "content": open(pdf_path, "rb"),
+            },
+            purpose="ocr"
+        )
+    
+    else:
+        # covert to pdf
+        resulting_pdf = image_to_pdf(pdf_path)
+        
+        uploaded_pdf = client.files.upload(
+            file={
+            "file_name": "test.pdf",
+            "content": open(resulting_pdf, 'rb'),
+            },
+            purpose="ocr",
+        ) 
+    
+    logging.info(f'Coverted image to pdf path: {resulting_pdf}')
+        
+    signed_url = client.files.get_signed_url(file_id=uploaded_pdf.id)
+
+    # get the result
+    ocr_response = client.ocr.process(
+        model="mistral-ocr-latest",
+        document={
+            "type": "document_url",
+            "document_url": signed_url.url,
+        }
+    )
+
+    result = json.loads(ocr_response.model_dump_json())
+    logging.info('Before formating: ', result)
+    final = ''
+    for page in result['pages']:
+        final += page["markdown"]
+
+    logging.info("mistral result: " + final, )
+
+    return final

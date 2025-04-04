@@ -3,6 +3,7 @@ from utils import (
     analyze_pdf_type,
     extract_text_from_pdf,
     extract_images_from_pdf,
+    extract_with_mistral,
     ocr_images_to_text,
     ocr_one_image_to_text,
     format_with_gemini
@@ -23,12 +24,14 @@ def process_pdf_task(self, pdf_path):
         # Extract text
         if pdf_type == "text":
             raw_text = extract_text_from_pdf(pdf_path)
+            mistral_text = extract_with_mistral(pdf_path)
         else:
             images = extract_images_from_pdf(pdf_path)
             raw_text = ocr_images_to_text(images)
+            mistral_text = extract_with_mistral(pdf_path)
         
         # Format with OpenAI
-        formatted_md = format_with_gemini(raw_text)
+        formatted_md = format_with_gemini(raw_text, mistral_text)
         
         return {
             "document_type": pdf_type,
@@ -52,8 +55,12 @@ def process_image_task(self, image_path):
         # Extract text using OCR
         raw_text = ocr_one_image_to_text(image_path)
 
+        # Extract text using mistral
+        mistral_text = extract_with_mistral(image_path, image = True)
+
+
         # Format extracted text
-        formatted_md = format_with_gemini(raw_text)
+        formatted_md = format_with_gemini(raw_text, mistral_text)
 
         return {
             "document_type": "image",

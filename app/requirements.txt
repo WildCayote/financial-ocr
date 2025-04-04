@@ -9,3 +9,6 @@ pytesseract     # OCR
 pillow        # Image processing
 openai       # Markdown formatting
 google-generativeai
+Mistral
+mistralai
+Spire.Pdf
