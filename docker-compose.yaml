@@ -3,7 +3,7 @@ version: "3.8"
 
 services:
   api:
-    build: ./app
+    image: tinsu2/financial-ocr:latest
     ports:
       - "7000:8000"
     environment:
@@ -17,7 +17,7 @@ services:
       - ./uploads:/app/uploads
 
   worker:
-    build: ./app
+    image: tinsu2/financial-ocr:latest
     command: celery -A tasks worker --loglevel=info
     env_file:
       - .env
