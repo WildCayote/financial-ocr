@@ -13,9 +13,7 @@ import google.generativeai as genai
 from spire.pdf.common import *
 from spire.pdf import *
 
-api_key = "mkH3CjEEYwTKErWuIMg1UYqlYnh88OJW"
-
-client = Mistral(api_key=api_key)
+client = Mistral(api_key=os.getenv("MISTRAL_OCR_KEY"))
 
 
 

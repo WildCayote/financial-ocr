@@ -1,0 +1,44 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/**"
+      - ".github/workflows/CD.yaml"
+      -
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.x"
+
+      - name: install requirements
+        run: |
+          cd app/
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.user_name }}
+          password: ${{ secrets.password }}
+
+      - name: Build Docker image
+        run: |
+          cd app
+          docker build -t tinsu2/financial-ocr:latest .
+
+      - name: Push Docker image
+        run: |
+          docker push tinsu2/financial-ocr:latest
